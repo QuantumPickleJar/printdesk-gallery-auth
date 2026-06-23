@@ -250,7 +250,7 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
   }
 });
 
-app.use((_req, res) => {
+app.get(/.*/, rateLimit, (_req, res) => {
   res.sendFile(path.join(config.staticDir, 'index.html'));
 });
 
