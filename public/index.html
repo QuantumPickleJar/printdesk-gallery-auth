@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pickle Gallery Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
+    input, textarea, button { width: 100%; margin: 6px 0 12px; padding: 10px; font-size: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .inline { display: flex; gap: 12px; }
+    .inline button { width: auto; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>Pickle Gallery Admin</h1>
+  <div class="card">
+    <h2>1) Login</h2>
+    <p id="me">Not authenticated</p>
+    <button id="startLogin">Start GitHub Device Flow</button>
+    <button id="pollLogin">Check Login Status</button>
+    <button id="logout">Logout / Revoke</button>
+    <pre id="deviceInfo"></pre>
+  </div>
+
+  <div class="card">
+    <h2>2) Add / Update Gallery Entry</h2>
+    <form id="galleryForm">
+      <input name="id" placeholder="Optional existing entry ID (for updates)" />
+      <input name="title" placeholder="Title" required />
+      <input name="shortDescription" placeholder="Short description" />
+      <textarea name="longDescription" placeholder="Long description"></textarea>
+      <div class="row">
+        <input name="material" placeholder="Material" />
+        <input name="printer" placeholder="Printer" />
+      </div>
+      <div class="row">
+        <input name="nozzle" placeholder="Nozzle" />
+        <input name="layerHeight" placeholder="Layer height" />
+      </div>
+      <div class="row">
+        <input name="printTime" placeholder="Print time" />
+        <input name="category" placeholder="Category" />
+      </div>
+      <input name="tags" placeholder="Tags (comma-separated)" />
+      <input name="status" placeholder="Status" />
+      <textarea name="notes" placeholder="Notes"></textarea>
+      <label>Images</label>
+      <input type="file" name="images" accept="image/*" multiple required />
+      <label>Optional attachment (STL/3MF/G-code/etc)</label>
+      <input type="file" name="attachment" />
+      <div class="inline">
+        <button type="button" id="dryRun">Dry Run</button>
+        <button type="submit">Submit</button>
+      </div>
+    </form>
+    <pre id="result"></pre>
+  </div>
+
+  <script>
+    const me = document.getElementById('me');
+    const deviceInfo = document.getElementById('deviceInfo');
+    const result = document.getElementById('result');
+
+    async function checkMe() {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      me.textContent = data.authenticated ? `Authenticated as ${data.username}` : 'Not authenticated';
+    }
+
+    document.getElementById('startLogin').onclick = async () => {
+      const res = await fetch('/api/auth/device/start', { method: 'POST' });
+      const data = await res.json();
+      deviceInfo.textContent = JSON.stringify(data, null, 2);
+    };
+
+    document.getElementById('pollLogin').onclick = async () => {
+      const res = await fetch('/api/auth/device/poll', { method: 'POST' });
+      const data = await res.json();
+      deviceInfo.textContent = JSON.stringify(data, null, 2);
+      await checkMe();
+    };
+
+    document.getElementById('logout').onclick = async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      deviceInfo.textContent = 'Logged out';
+      await checkMe();
+    };
+
+    async function submitForm(dryRun) {
+      const form = document.getElementById('galleryForm');
+      const data = new FormData(form);
+      const res = await fetch(`/api/gallery/submit${dryRun ? '?dryRun=true' : ''}`, {
+        method: 'POST',
+        body: data
+      });
+      const payload = await res.json();
+      result.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    document.getElementById('dryRun').onclick = () => submitForm(true);
+    document.getElementById('galleryForm').onsubmit = (e) => {
+      e.preventDefault();
+      submitForm(false);
+    };
+
+    checkMe();
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "pickle-gallery-admin",
+  "version": "1.0.0",
+  "description": "Local admin companion app for Personal-Static 3D print gallery",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuantumPickleJar/printdesk-gallery-auth.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/QuantumPickleJar/printdesk-gallery-auth/issues"
+  },
+  "homepage": "https://github.com/QuantumPickleJar/printdesk-gallery-auth#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.2.0"
+  }
+}
