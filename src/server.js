@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const multer = require('multer');
@@ -25,6 +26,7 @@ const sessions = new Map();
 const rateWindowMs = 60_000;
 const maxRequestsPerWindow = 180;
 const requestBuckets = new Map();
+const indexHtml = fs.readFileSync(path.join(config.staticDir, 'index.html'), 'utf8');
 
 function rateLimit(req, res, next) {
   const now = Date.now();
@@ -140,10 +142,10 @@ app.get('/api/auth/me', (req, res) => {
 app.post('/api/auth/logout', async (req, res) => {
   const session = getSession(req, res);
   const token = session.token;
-  session.token = null;
-  session.username = null;
-  session.deviceCode = null;
-  session.expiresAt = null;
+  delete session.token;
+  delete session.username;
+  delete session.deviceCode;
+  delete session.expiresAt;
 
   try {
     await revokeToken(config.githubClientId, config.githubClientSecret, token);
@@ -251,7 +253,7 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
 });
 
 app.get(/.*/, rateLimit, (_req, res) => {
-  res.sendFile(path.join(config.staticDir, 'index.html'));
+  res.type('html').send(indexHtml);
 });
 
 if (require.main === module) {
