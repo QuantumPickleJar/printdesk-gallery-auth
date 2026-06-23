@@ -60,7 +60,7 @@ function getCookie(req, name) {
 function getSession(req, res) {
   let sid = getCookie(req, config.sessionCookie);
   if (!sid || !sessions.has(sid)) {
-    sid = crypto.randomBytes(18).toString('hex');
+    sid = crypto.randomBytes(24).toString('hex');
     sessions.set(sid, {});
     res.setHeader('Set-Cookie', `${config.sessionCookie}=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax`);
   }
@@ -252,7 +252,7 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
   }
 });
 
-app.get(/.*/, rateLimit, (_req, res) => {
+app.get(/.*/, (_req, res) => {
   res.type('html').send(indexHtml);
 });
 
