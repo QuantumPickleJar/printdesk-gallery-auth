@@ -6,6 +6,10 @@ test('sanitizeFileName strips unsafe chars', () => {
   assert.equal(sanitizeFileName('../my image?.png'), 'my-image-.png');
 });
 
+test('sanitizeFileName removes leading dots', () => {
+  assert.equal(sanitizeFileName('...secret.stl'), 'secret.stl');
+});
+
 test('buildEntry parses tags and preserves attachment', () => {
   const entry = buildEntry({ title: 'Cube', tags: 'a, b, c' }, ['assets/gallery/cube/a.png'], 'assets/gallery-attachments/cube/cube.stl', 'cube');
   assert.equal(entry.id, 'cube');

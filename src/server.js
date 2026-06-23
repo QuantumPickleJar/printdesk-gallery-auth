@@ -17,14 +17,35 @@ const {
   createCommit,
   updateRef
 } = require('./github');
-const { sanitizeFileName, buildEntry, mergeEntry } = require('./gallery');
+const { sanitizeFileName, buildEntry, mergeEntry, slugify } = require('./gallery');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const sessions = new Map();
+const rateWindowMs = 60_000;
+const maxRequestsPerWindow = 180;
+const requestBuckets = new Map();
+
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  const key = `${req.ip}:${req.path}`;
+  const bucket = requestBuckets.get(key);
+  if (!bucket || now > bucket.resetAt) {
+    requestBuckets.set(key, { count: 1, resetAt: now + rateWindowMs });
+    return next();
+  }
+
+  bucket.count += 1;
+  if (bucket.count > maxRequestsPerWindow) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
+
+  return next();
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(rateLimit);
 app.use(express.static(config.staticDir));
 
 function getCookie(req, name) {
@@ -165,10 +186,7 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
 
     const rawId = String(req.body.id || '').trim();
     const imagePaths = [];
-    const entryId = (rawId || title)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'print';
+    const entryId = slugify(rawId || title);
 
     const filePayloads = [];
     for (const image of images) {
