@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+process.env.GITHUB_CLIENT_ID = '';
+
 const { app } = require('../src/server');
 
 function listen(appInstance) {
