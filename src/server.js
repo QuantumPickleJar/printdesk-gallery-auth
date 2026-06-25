@@ -293,8 +293,8 @@ app.get(/.*/, (_req, res) => {
 });
 
 if (require.main === module) {
-  app.listen(config.port, () => {
-    console.log(`printdesk-gallery-auth listening on http://localhost:${config.port}`);
+  app.listen(config.port, config.host, () => {
+    console.log(`printdesk-gallery-auth listening on http://${config.host}:${config.port}`);
   });
 }
 
