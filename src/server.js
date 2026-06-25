@@ -18,7 +18,7 @@ const {
   createCommit,
   updateRef
 } = require('./github');
-const { sanitizeFileName, buildEntry, mergeEntry, slugify } = require('./gallery');
+const { sanitizeFileName, buildEntry, mergeEntry, slugify, parseExistingGallery } = require('./gallery');
 
 const app = express();
 const maxUploadFileSizeBytes = Number(process.env.GALLERY_UPLOAD_FILE_LIMIT_BYTES || 95 * 1024 * 1024);
@@ -164,6 +164,27 @@ function getTextContent(contentFile) {
 
   return Buffer.from(contentFile.content, 'base64').toString('utf8');
 }
+
+async function readGalleryPayload(token) {
+  const existingJson = await getFile(config.targetOwner, config.targetRepo, config.galleryJsonPath, config.targetBranch, token);
+  const existingJsonContent = getTextContent(existingJson);
+  const gallery = parseExistingGallery(existingJsonContent);
+
+  return {
+    target: `${config.targetOwner}/${config.targetRepo}@${config.targetBranch}`,
+    path: config.galleryJsonPath,
+    sha: existingJson.sha || null,
+    entries: gallery.entries || []
+  };
+}
+
+app.get('/api/gallery', requireAuth, async (req, res) => {
+  try {
+    return res.json(await readGalleryPayload(req.session.token));
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/gallery/submit', requireAuth, upload.fields([
   { name: 'images', maxCount: 20 },
