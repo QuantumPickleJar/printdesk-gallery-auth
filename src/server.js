@@ -51,6 +51,36 @@ function formatMiB(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
+function sha256(value) {
+  return crypto.createHash('sha256').update(String(value || ''), 'utf8').digest('hex');
+}
+
+function localOwnerUnlockEnabled() {
+  return Boolean(config.localOwnerUnlock || config.localOwnerUnlockSha256);
+}
+
+function constantTimeEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'hex');
+  const rightBuffer = Buffer.from(String(right || ''), 'hex');
+  return leftBuffer.length > 0 && leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyLocalOwnerUnlock(password) {
+  if (!localOwnerUnlockEnabled()) return false;
+  const expectedHash = config.localOwnerUnlockSha256 || sha256(config.localOwnerUnlock);
+  return constantTimeEquals(sha256(password), expectedHash);
+}
+
+function setLocalOwnerUnlocked(session) {
+  const sessionMinutes = Number(config.localOwnerSessionMinutes || 240);
+  session.localOwnerUnlocked = true;
+  session.localOwnerExpiresAt = Date.now() + Math.max(5, sessionMinutes) * 60 * 1000;
+}
+
+function isLocalOwnerUnlocked(session) {
+  return Boolean(session && session.localOwnerUnlocked && session.localOwnerExpiresAt && session.localOwnerExpiresAt > Date.now());
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(rateLimit);
@@ -84,6 +114,41 @@ function requireAuth(req, res, next) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/api/local-owner/status', (req, res) => {
+  const session = getSession(req, res);
+  const unlocked = isLocalOwnerUnlocked(session);
+  res.json({
+    enabled: localOwnerUnlockEnabled(),
+    unlocked,
+    expiresAt: unlocked ? new Date(session.localOwnerExpiresAt).toISOString() : null
+  });
+});
+
+app.post('/api/local-owner/unlock', (req, res) => {
+  if (!localOwnerUnlockEnabled()) {
+    return res.status(404).json({ error: 'Local owner unlock is not enabled.' });
+  }
+
+  const password = String(req.body.password || '');
+  if (!verifyLocalOwnerUnlock(password)) {
+    return res.status(401).json({ error: 'Invalid local owner unlock password.' });
+  }
+
+  const session = getSession(req, res);
+  setLocalOwnerUnlocked(session);
+  return res.json({
+    unlocked: true,
+    expiresAt: new Date(session.localOwnerExpiresAt).toISOString()
+  });
+});
+
+app.post('/api/local-owner/lock', (req, res) => {
+  const session = getSession(req, res);
+  delete session.localOwnerUnlocked;
+  delete session.localOwnerExpiresAt;
+  return res.json({ unlocked: false });
 });
 
 app.post('/api/auth/device/start', async (req, res) => {
