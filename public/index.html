@@ -13,6 +13,7 @@
     .inline button { width: auto; }
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
     .muted { color: #666; font-size: 0.92rem; }
+    .warning { color: #7a4a00; background: #fff4d6; border: 1px solid #f2c766; border-radius: 8px; padding: 10px; margin: 8px 0 12px; }
     .selected-summary { border-radius: 8px; background: #f6f3ff; border: 1px solid #ded2ff; padding: 10px; margin: 8px 0 12px; }
     .selected-summary p { margin: 0.2rem 0; }
     .color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 6px 0 12px; }
@@ -67,6 +68,16 @@
       <div id="materialColorChoices" class="color-grid"></div>
       <input name="colors" placeholder="Colors used (comma-separated)" />
       <p id="materialStatus" class="muted">Material colors load from PrintDesk public pricing JSON when available.</p>
+      <fieldset class="card">
+        <legend><strong>Generator setup metadata</strong></legend>
+        <p class="muted">Optional owner/reference metadata from Tokenforge Generator. Public cards should use the colors above; detailed layer info is stored but not displayed to end users.</p>
+        <div class="row">
+          <input name="generatorSource" placeholder="Generator/source, e.g. tokenforge-generator" />
+          <input name="generatorVersion" placeholder="Generator version" />
+        </div>
+        <textarea name="colorLayerSummary" placeholder="Color/layer arrangement summary, e.g. Black 0-1.2mm, Gold 1.2-1.8mm, Red 1.8-2.0mm"></textarea>
+        <textarea name="generatorNotes" placeholder="Generator notes / slicer notes / setup reminders"></textarea>
+      </fieldset>
       <div class="row">
         <input name="nozzle" placeholder="Nozzle" />
         <input name="layerHeight" placeholder="Layer height" />
@@ -82,7 +93,8 @@
       <input type="file" name="images" accept="image/*" multiple required />
       <p class="muted">For now, updates still require re-uploading images because the submit endpoint rebuilds the image list from the form upload.</p>
       <label>Optional attachment (STL/3MF/G-code/etc)</label>
-      <input type="file" name="attachment" />
+      <input id="attachmentInput" type="file" name="attachment" />
+      <p id="attachmentWarning" class="warning" hidden></p>
       <p id="existingAttachmentHint" class="muted"></p>
       <div class="inline">
         <button type="button" id="dryRun">Dry Run</button>
@@ -94,6 +106,7 @@
 
   <script>
     const PRINTDESK_MATERIALS_URL = 'https://quantumpicklejar.github.io/tokenforge-printdesk/data/materials.json';
+    const MAX_REPO_ATTACHMENT_BYTES = 50 * 1024 * 1024;
     const me = document.getElementById('me');
     const deviceInfo = document.getElementById('deviceInfo');
     const result = document.getElementById('result');
@@ -102,6 +115,8 @@
     const entryOptions = document.getElementById('entryOptions');
     const selectedSummary = document.getElementById('selectedSummary');
     const existingAttachmentHint = document.getElementById('existingAttachmentHint');
+    const attachmentInput = document.getElementById('attachmentInput');
+    const attachmentWarning = document.getElementById('attachmentWarning');
     const materialPreset = document.getElementById('materialPreset');
     const materialColorChoices = document.getElementById('materialColorChoices');
     const materialStatus = document.getElementById('materialStatus');
@@ -115,6 +130,10 @@
 
     function normalize(value) {
       return String(value || '').trim().toLowerCase();
+    }
+
+    function formatMiB(bytes) {
+      return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
     }
 
     function findEntryFromSearch() {
@@ -210,6 +229,18 @@
       renderColorChoices(materialPreset.value);
     });
 
+    attachmentInput.addEventListener('change', () => {
+      const file = attachmentInput.files && attachmentInput.files[0];
+      if (!file || file.size <= MAX_REPO_ATTACHMENT_BYTES) {
+        attachmentWarning.hidden = true;
+        attachmentWarning.textContent = '';
+        return;
+      }
+
+      attachmentWarning.hidden = false;
+      attachmentWarning.textContent = `${file.name} is ${formatMiB(file.size)}. Files above ${formatMiB(MAX_REPO_ATTACHMENT_BYTES)} are not committed through this portfolio form; the photos and gallery entry will still submit, but the attachment will be skipped.`;
+    });
+
     function renderSelectedSummary(entry) {
       if (!entry) {
         selectedSummary.hidden = true;
@@ -260,12 +291,17 @@
       }
 
       const form = document.getElementById('galleryForm');
+      const generatorSetup = entry.generatorSetup || {};
       setField(form, 'id', entry.id);
       setField(form, 'title', entry.title || entry.name);
       setField(form, 'shortDescription', entry.shortDescription || entry.description);
       setField(form, 'longDescription', entry.longDescription);
       setField(form, 'material', entry.material);
       setField(form, 'colors', toCsv(entry.colors));
+      setField(form, 'generatorSource', generatorSetup.source);
+      setField(form, 'generatorVersion', generatorSetup.version);
+      setField(form, 'colorLayerSummary', generatorSetup.colorLayerSummary);
+      setField(form, 'generatorNotes', generatorSetup.notes);
       setField(form, 'printer', entry.printer);
       setField(form, 'nozzle', entry.nozzle);
       setField(form, 'layerHeight', entry.layerHeight);
