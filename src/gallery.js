@@ -88,6 +88,24 @@ function parseExistingGallery(content) {
   return { entries: [] };
 }
 
+function buildGeneratorSetup(fields) {
+  const source = String(fields.generatorSource || '').trim();
+  const version = String(fields.generatorVersion || '').trim();
+  const colorLayerSummary = String(fields.colorLayerSummary || '').trim();
+  const notes = String(fields.generatorNotes || '').trim();
+
+  if (!source && !version && !colorLayerSummary && !notes) {
+    return null;
+  }
+
+  return {
+    source,
+    version,
+    colorLayerSummary,
+    notes
+  };
+}
+
 function buildEntry(fields, imagePaths, attachmentPath, existingId) {
   const title = String(fields.title || '').trim();
   const baseId = slugify(existingId || fields.id || title);
@@ -100,6 +118,7 @@ function buildEntry(fields, imagePaths, attachmentPath, existingId) {
     longDescription: String(fields.longDescription || '').trim(),
     material: String(fields.material || '').trim(),
     colors: parseTags(fields.colors),
+    generatorSetup: buildGeneratorSetup(fields),
     printer: String(fields.printer || '').trim(),
     nozzle: String(fields.nozzle || '').trim(),
     layerHeight: String(fields.layerHeight || '').trim(),
@@ -119,7 +138,15 @@ function mergeEntry(existingContent, entry) {
   const index = gallery.entries.findIndex((item) => item.id === entry.id);
 
   if (index >= 0) {
-    gallery.entries[index] = { ...gallery.entries[index], ...entry };
+    const existing = gallery.entries[index];
+    const merged = { ...existing, ...entry };
+    if (entry.attachment === null && existing.attachment) {
+      merged.attachment = existing.attachment;
+    }
+    if (entry.generatorSetup === null && existing.generatorSetup) {
+      merged.generatorSetup = existing.generatorSetup;
+    }
+    gallery.entries[index] = merged;
   } else {
     gallery.entries.push(entry);
   }
