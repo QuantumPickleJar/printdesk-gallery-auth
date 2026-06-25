@@ -5,12 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pickle Gallery Admin</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
-    input, textarea, button { width: 100%; margin: 6px 0 12px; padding: 10px; font-size: 16px; }
+    body { font-family: system-ui, sans-serif; max-width: 820px; margin: 0 auto; padding: 16px; }
+    input, textarea, button, select { width: 100%; margin: 6px 0 12px; padding: 10px; font-size: 16px; box-sizing: border-box; }
+    label { display: block; font-weight: 650; margin-top: 8px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .inline { display: flex; gap: 12px; }
+    .inline { display: flex; gap: 12px; align-items: center; }
     .inline button { width: auto; }
     .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .muted { color: #666; font-size: 0.92rem; }
+    .selected-summary { border-radius: 8px; background: #f6f3ff; border: 1px solid #ded2ff; padding: 10px; margin: 8px 0 12px; }
+    .selected-summary p { margin: 0.2rem 0; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
@@ -26,7 +30,22 @@
   </div>
 
   <div class="card">
-    <h2>2) Add / Update Gallery Entry</h2>
+    <h2>2) Find Existing Entry</h2>
+    <p class="muted">Load the current gallery JSON from GitHub, search by ID/title/category, then prefill the form below for a safer update.</p>
+    <div class="inline">
+      <button type="button" id="refreshGallery">Refresh Gallery Entries</button>
+      <button type="button" id="clearSelection">Clear Selection</button>
+    </div>
+    <label for="entrySearch">Search / choose existing item</label>
+    <input id="entrySearch" list="entryOptions" placeholder="Type an ID, title, category, or tag" autocomplete="off" />
+    <datalist id="entryOptions"></datalist>
+    <button type="button" id="loadSelectedEntry">Load Selected Entry Into Form</button>
+    <div id="selectedSummary" class="selected-summary" hidden></div>
+    <pre id="lookupResult"></pre>
+  </div>
+
+  <div class="card">
+    <h2>3) Add / Update Gallery Entry</h2>
     <form id="galleryForm">
       <input name="id" placeholder="Optional existing entry ID (for updates)" />
       <input name="title" placeholder="Title" required />
@@ -49,8 +68,10 @@
       <textarea name="notes" placeholder="Notes"></textarea>
       <label>Images</label>
       <input type="file" name="images" accept="image/*" multiple required />
+      <p class="muted">For now, updates still require re-uploading images because the submit endpoint rebuilds the image list from the form upload.</p>
       <label>Optional attachment (STL/3MF/G-code/etc)</label>
       <input type="file" name="attachment" />
+      <p id="existingAttachmentHint" class="muted"></p>
       <div class="inline">
         <button type="button" id="dryRun">Dry Run</button>
         <button type="submit">Submit</button>
@@ -63,11 +84,121 @@
     const me = document.getElementById('me');
     const deviceInfo = document.getElementById('deviceInfo');
     const result = document.getElementById('result');
+    const lookupResult = document.getElementById('lookupResult');
+    const entrySearch = document.getElementById('entrySearch');
+    const entryOptions = document.getElementById('entryOptions');
+    const selectedSummary = document.getElementById('selectedSummary');
+    const existingAttachmentHint = document.getElementById('existingAttachmentHint');
+    let galleryEntries = [];
+
+    function entryLabel(entry) {
+      const parts = [entry.id, entry.title || entry.name, entry.category].filter(Boolean);
+      return parts.join(' — ');
+    }
+
+    function normalize(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function findEntryFromSearch() {
+      const value = normalize(entrySearch.value);
+      if (!value) return null;
+
+      return galleryEntries.find((entry) => normalize(entry.id) === value)
+        || galleryEntries.find((entry) => normalize(entryLabel(entry)) === value)
+        || galleryEntries.find((entry) => entryLabel(entry).toLowerCase().includes(value));
+    }
+
+    function setField(form, name, value) {
+      const field = form.elements.namedItem(name);
+      if (field) field.value = value || '';
+    }
+
+    function toCsv(value) {
+      return Array.isArray(value) ? value.join(', ') : String(value || '');
+    }
+
+    function populateEntryOptions(entries) {
+      entryOptions.innerHTML = '';
+      for (const entry of entries) {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        option.label = entryLabel(entry);
+        entryOptions.appendChild(option);
+      }
+    }
+
+    function renderSelectedSummary(entry) {
+      if (!entry) {
+        selectedSummary.hidden = true;
+        selectedSummary.innerHTML = '';
+        existingAttachmentHint.textContent = '';
+        return;
+      }
+
+      selectedSummary.hidden = false;
+      selectedSummary.innerHTML = `
+        <p><strong>${entry.title || entry.name || entry.id}</strong></p>
+        <p>ID: <code>${entry.id}</code></p>
+        <p>Images: ${(entry.images || []).length || 0}</p>
+        <p>Attachment: ${entry.attachment ? `<code>${entry.attachment}</code>` : 'none'}</p>
+      `;
+      existingAttachmentHint.textContent = entry.attachment
+        ? `Current attachment: ${entry.attachment}. Upload a new attachment to replace the JSON pointer.`
+        : 'No current attachment recorded.';
+    }
 
     async function checkMe() {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
       me.textContent = data.authenticated ? `Authenticated as ${data.username}` : 'Not authenticated';
+      return data.authenticated;
+    }
+
+    async function refreshGalleryEntries() {
+      lookupResult.textContent = 'Loading gallery JSON...';
+      const res = await fetch('/api/gallery');
+      const data = await res.json();
+      if (!res.ok) {
+        lookupResult.textContent = JSON.stringify(data, null, 2);
+        return;
+      }
+
+      galleryEntries = data.entries || [];
+      populateEntryOptions(galleryEntries);
+      lookupResult.textContent = `Loaded ${galleryEntries.length} entries from ${data.target} (${data.path}).`;
+    }
+
+    function loadSelectedEntry() {
+      const entry = findEntryFromSearch();
+      if (!entry) {
+        lookupResult.textContent = `No matching entry found for: ${entrySearch.value}`;
+        return;
+      }
+
+      const form = document.getElementById('galleryForm');
+      setField(form, 'id', entry.id);
+      setField(form, 'title', entry.title || entry.name);
+      setField(form, 'shortDescription', entry.shortDescription || entry.description);
+      setField(form, 'longDescription', entry.longDescription);
+      setField(form, 'material', entry.material);
+      setField(form, 'printer', entry.printer);
+      setField(form, 'nozzle', entry.nozzle);
+      setField(form, 'layerHeight', entry.layerHeight);
+      setField(form, 'printTime', entry.printTime);
+      setField(form, 'category', entry.category || (Array.isArray(entry.categories) ? entry.categories[0] : ''));
+      setField(form, 'tags', toCsv(entry.tags));
+      setField(form, 'status', entry.status);
+      setField(form, 'notes', entry.notes);
+      entrySearch.value = entry.id;
+      renderSelectedSummary(entry);
+      lookupResult.textContent = `Loaded ${entry.id} into the form. Re-upload images before submitting an update.`;
+    }
+
+    function clearSelection() {
+      entrySearch.value = '';
+      renderSelectedSummary(null);
+      lookupResult.textContent = 'Selection cleared.';
     }
 
     document.getElementById('startLogin').onclick = async () => {
@@ -80,24 +211,34 @@
       const res = await fetch('/api/auth/device/poll', { method: 'POST' });
       const data = await res.json();
       deviceInfo.textContent = JSON.stringify(data, null, 2);
-      await checkMe();
+      if (await checkMe()) await refreshGalleryEntries();
     };
 
     document.getElementById('logout').onclick = async () => {
       await fetch('/api/auth/logout', { method: 'POST' });
       deviceInfo.textContent = 'Logged out';
+      galleryEntries = [];
+      populateEntryOptions(galleryEntries);
+      clearSelection();
       await checkMe();
     };
+
+    document.getElementById('refreshGallery').onclick = refreshGalleryEntries;
+    document.getElementById('loadSelectedEntry').onclick = loadSelectedEntry;
+    document.getElementById('clearSelection').onclick = clearSelection;
+    entrySearch.addEventListener('change', loadSelectedEntry);
 
     async function submitForm(dryRun) {
       const form = document.getElementById('galleryForm');
       const data = new FormData(form);
+      result.textContent = dryRun ? 'Running dry run...' : 'Submitting...';
       const res = await fetch(`/api/gallery/submit${dryRun ? '?dryRun=true' : ''}`, {
         method: 'POST',
         body: data
       });
       const payload = await res.json();
       result.textContent = JSON.stringify(payload, null, 2);
+      if (res.ok && !dryRun) await refreshGalleryEntries();
     }
 
     document.getElementById('dryRun').onclick = () => submitForm(true);
@@ -106,7 +247,9 @@
       submitForm(false);
     };
 
-    checkMe();
+    checkMe().then((authenticated) => {
+      if (authenticated) refreshGalleryEntries();
+    });
   </script>
 </body>
 </html>
