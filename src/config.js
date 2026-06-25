@@ -2,6 +2,7 @@ const path = require('path');
 
 const config = {
   port: Number(process.env.PORT || 5175),
+  host: process.env.HOST || process.env.BIND_HOST || '0.0.0.0',
   githubClientId: process.env.GITHUB_CLIENT_ID || '',
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET || '',
   allowedUser: process.env.ALLOWED_GITHUB_USER || 'QuantumPickleJar',
