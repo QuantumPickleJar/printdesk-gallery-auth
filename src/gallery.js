@@ -99,6 +99,7 @@ function buildEntry(fields, imagePaths, attachmentPath, existingId) {
     shortDescription: String(fields.shortDescription || '').trim(),
     longDescription: String(fields.longDescription || '').trim(),
     material: String(fields.material || '').trim(),
+    colors: parseTags(fields.colors),
     printer: String(fields.printer || '').trim(),
     nozzle: String(fields.nozzle || '').trim(),
     layerHeight: String(fields.layerHeight || '').trim(),
