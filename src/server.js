@@ -22,6 +22,7 @@ const { sanitizeFileName, buildEntry, mergeEntry, slugify, parseExistingGallery 
 
 const app = express();
 const maxUploadFileSizeBytes = Number(process.env.GALLERY_UPLOAD_FILE_LIMIT_BYTES || 95 * 1024 * 1024);
+const maxGitAttachmentSizeBytes = Number(process.env.GALLERY_GIT_ATTACHMENT_LIMIT_BYTES || 50 * 1024 * 1024);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxUploadFileSizeBytes } });
 const sessions = new Map();
 const rateWindowMs = 60_000;
@@ -44,6 +45,10 @@ function rateLimit(req, res, next) {
   }
 
   return next();
+}
+
+function formatMiB(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
 app.use(express.json());
@@ -193,6 +198,7 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
   try {
     const dryRun = String(req.query.dryRun || '').toLowerCase() === 'true';
     const token = req.session.token;
+    const warnings = [];
 
     const title = String(req.body.title || '').trim();
     if (!title) {
@@ -223,9 +229,19 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
     let attachmentPath = null;
     const attachment = files.attachment && files.attachment[0];
     if (attachment) {
-      const cleanAttachment = sanitizeFileName(attachment.originalname);
-      attachmentPath = path.posix.join(config.attachmentBasePath, entryId, cleanAttachment);
-      filePayloads.push({ path: attachmentPath, content: attachment.buffer.toString('base64') });
+      if (attachment.size > maxGitAttachmentSizeBytes) {
+        warnings.push({
+          type: 'attachment_skipped_too_large',
+          filename: attachment.originalname,
+          sizeBytes: attachment.size,
+          limitBytes: maxGitAttachmentSizeBytes,
+          message: `${attachment.originalname} is ${formatMiB(attachment.size)}, which is too large for this portfolio repo upload path. The gallery entry and photos will still be submitted, but the model attachment was skipped.`
+        });
+      } else {
+        const cleanAttachment = sanitizeFileName(attachment.originalname);
+        attachmentPath = path.posix.join(config.attachmentBasePath, entryId, cleanAttachment);
+        filePayloads.push({ path: attachmentPath, content: attachment.buffer.toString('base64') });
+      }
     }
 
     const entry = buildEntry(req.body, imagePaths, attachmentPath, entryId);
@@ -248,7 +264,8 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
         dryRun: true,
         target: `${config.targetOwner}/${config.targetRepo}@${config.targetBranch}`,
         commitMessage: `gallery: ${entry.id} (${entry.title})`,
-        plannedChanges
+        plannedChanges,
+        warnings
       });
     }
 
@@ -267,7 +284,8 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
       dryRun: false,
       commitSha,
       commitUrl: `https://github.com/${config.targetOwner}/${config.targetRepo}/commit/${commitSha}`,
-      plannedChanges
+      plannedChanges,
+      warnings
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
