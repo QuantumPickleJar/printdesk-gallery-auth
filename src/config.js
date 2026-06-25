@@ -13,6 +13,9 @@ const config = {
   assetBasePath: (process.env.GALLERY_ASSET_BASE_PATH || 'assets/gallery').replace(/\\/g, '/'),
   attachmentBasePath: (process.env.GALLERY_ATTACHMENT_BASE_PATH || 'assets/gallery-attachments').replace(/\\/g, '/'),
   sessionCookie: process.env.SESSION_COOKIE_NAME || 'pg_admin_sid',
+  localOwnerUnlock: process.env.LOCAL_OWNER_UNLOCK || '',
+  localOwnerUnlockSha256: process.env.LOCAL_OWNER_UNLOCK_SHA256 || '',
+  localOwnerSessionMinutes: Number(process.env.LOCAL_OWNER_SESSION_MINUTES || 240),
   staticDir: path.join(process.cwd(), 'public')
 };
 
