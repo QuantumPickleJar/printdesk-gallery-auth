@@ -1,0 +1,15 @@
+[Unit]
+Description=Printdesk Gallery Auth Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/printdesk-gallery-auth
+EnvironmentFile=/path/to/printdesk-gallery-auth/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
