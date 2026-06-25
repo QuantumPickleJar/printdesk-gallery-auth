@@ -15,6 +15,10 @@
     .muted { color: #666; font-size: 0.92rem; }
     .selected-summary { border-radius: 8px; background: #f6f3ff; border: 1px solid #ded2ff; padding: 10px; margin: 8px 0 12px; }
     .selected-summary p { margin: 0.2rem 0; }
+    .color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 6px 0 12px; }
+    .color-option { display: flex; align-items: center; gap: 8px; border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+    .color-option input { width: auto; margin: 0; }
+    .swatch { width: 20px; height: 20px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.2); flex: 0 0 auto; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
@@ -51,10 +55,18 @@
       <input name="title" placeholder="Title" required />
       <input name="shortDescription" placeholder="Short description" />
       <textarea name="longDescription" placeholder="Long description"></textarea>
+      <label for="materialPreset">Material preset</label>
+      <select id="materialPreset">
+        <option value="">Manual / not loaded</option>
+      </select>
       <div class="row">
         <input name="material" placeholder="Material" />
         <input name="printer" placeholder="Printer" />
       </div>
+      <label>Colors used</label>
+      <div id="materialColorChoices" class="color-grid"></div>
+      <input name="colors" placeholder="Colors used (comma-separated)" />
+      <p id="materialStatus" class="muted">Material colors load from PrintDesk public pricing JSON when available.</p>
       <div class="row">
         <input name="nozzle" placeholder="Nozzle" />
         <input name="layerHeight" placeholder="Layer height" />
@@ -81,6 +93,7 @@
   </div>
 
   <script>
+    const PRINTDESK_MATERIALS_URL = 'https://quantumpicklejar.github.io/tokenforge-printdesk/data/materials.json';
     const me = document.getElementById('me');
     const deviceInfo = document.getElementById('deviceInfo');
     const result = document.getElementById('result');
@@ -89,7 +102,11 @@
     const entryOptions = document.getElementById('entryOptions');
     const selectedSummary = document.getElementById('selectedSummary');
     const existingAttachmentHint = document.getElementById('existingAttachmentHint');
+    const materialPreset = document.getElementById('materialPreset');
+    const materialColorChoices = document.getElementById('materialColorChoices');
+    const materialStatus = document.getElementById('materialStatus');
     let galleryEntries = [];
+    let materialCatalog = [];
 
     function entryLabel(entry) {
       const parts = [entry.id, entry.title || entry.name, entry.category].filter(Boolean);
@@ -128,6 +145,71 @@
       }
     }
 
+    function selectedColors() {
+      return Array.from(materialColorChoices.querySelectorAll('input[type="checkbox"]:checked'))
+        .map((input) => input.value);
+    }
+
+    function syncColorsInput() {
+      const form = document.getElementById('galleryForm');
+      setField(form, 'colors', selectedColors().join(', '));
+    }
+
+    function renderColorChoices(materialId, selected = []) {
+      const selectedSet = new Set((selected || []).map(normalize));
+      const material = materialCatalog.find((candidate) => candidate.id === materialId);
+      materialColorChoices.innerHTML = '';
+      if (!material) return;
+
+      for (const color of material.colors || []) {
+        if (color.active === false) continue;
+        const label = `${material.materialType || material.name} — ${color.colorName}${color.brand ? ` (${color.brand})` : ''}`;
+        const wrapper = document.createElement('label');
+        wrapper.className = 'color-option';
+        wrapper.innerHTML = `
+          <input type="checkbox" value="${label.replaceAll('"', '&quot;')}" ${selectedSet.has(normalize(label)) || selectedSet.has(normalize(color.colorName)) ? 'checked' : ''}>
+          <span class="swatch" style="background: ${color.hexColor || '#ddd'}"></span>
+          <span>${label}</span>
+        `;
+        wrapper.querySelector('input').addEventListener('change', syncColorsInput);
+        materialColorChoices.appendChild(wrapper);
+      }
+      syncColorsInput();
+    }
+
+    function populateMaterialCatalog(materials) {
+      materialCatalog = materials || [];
+      materialPreset.innerHTML = '<option value="">Manual / not loaded</option>';
+      for (const material of materialCatalog) {
+        if (material.active === false) continue;
+        const option = document.createElement('option');
+        option.value = material.id;
+        option.textContent = `${material.materialType || material.name} — ${material.name || 'Material'}`;
+        materialPreset.appendChild(option);
+      }
+    }
+
+    async function loadMaterialCatalog() {
+      try {
+        const res = await fetch(PRINTDESK_MATERIALS_URL, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`Material JSON returned ${res.status}`);
+        const data = await res.json();
+        populateMaterialCatalog(data.materials || []);
+        materialStatus.textContent = `Loaded material colors from PrintDesk public pricing JSON.`;
+      } catch (error) {
+        materialStatus.textContent = `Could not load PrintDesk material colors. Manual material/color entry still works.`;
+      }
+    }
+
+    materialPreset.addEventListener('change', () => {
+      const material = materialCatalog.find((candidate) => candidate.id === materialPreset.value);
+      const form = document.getElementById('galleryForm');
+      if (material) {
+        setField(form, 'material', material.materialType || material.name || '');
+      }
+      renderColorChoices(materialPreset.value);
+    });
+
     function renderSelectedSummary(entry) {
       if (!entry) {
         selectedSummary.hidden = true;
@@ -141,6 +223,7 @@
         <p><strong>${entry.title || entry.name || entry.id}</strong></p>
         <p>ID: <code>${entry.id}</code></p>
         <p>Images: ${(entry.images || []).length || 0}</p>
+        <p>Colors: ${(entry.colors || []).join(', ') || 'none'}</p>
         <p>Attachment: ${entry.attachment ? `<code>${entry.attachment}</code>` : 'none'}</p>
       `;
       existingAttachmentHint.textContent = entry.attachment
@@ -182,6 +265,7 @@
       setField(form, 'shortDescription', entry.shortDescription || entry.description);
       setField(form, 'longDescription', entry.longDescription);
       setField(form, 'material', entry.material);
+      setField(form, 'colors', toCsv(entry.colors));
       setField(form, 'printer', entry.printer);
       setField(form, 'nozzle', entry.nozzle);
       setField(form, 'layerHeight', entry.layerHeight);
@@ -192,6 +276,7 @@
       setField(form, 'notes', entry.notes);
       entrySearch.value = entry.id;
       renderSelectedSummary(entry);
+      renderColorChoices(materialPreset.value, entry.colors || []);
       lookupResult.textContent = `Loaded ${entry.id} into the form. Re-upload images before submitting an update.`;
     }
 
@@ -229,6 +314,7 @@
     entrySearch.addEventListener('change', loadSelectedEntry);
 
     async function submitForm(dryRun) {
+      syncColorsInput();
       const form = document.getElementById('galleryForm');
       const data = new FormData(form);
       result.textContent = dryRun ? 'Running dry run...' : 'Submitting...';
@@ -247,6 +333,7 @@
       submitForm(false);
     };
 
+    loadMaterialCatalog();
     checkMe().then((authenticated) => {
       if (authenticated) refreshGalleryEntries();
     });
