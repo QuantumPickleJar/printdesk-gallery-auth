@@ -21,7 +21,8 @@ const {
 const { sanitizeFileName, buildEntry, mergeEntry, slugify } = require('./gallery');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const maxUploadFileSizeBytes = Number(process.env.GALLERY_UPLOAD_FILE_LIMIT_BYTES || 95 * 1024 * 1024);
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxUploadFileSizeBytes } });
 const sessions = new Map();
 const rateWindowMs = 60_000;
 const maxRequestsPerWindow = 180;
@@ -252,13 +253,27 @@ app.post('/api/gallery/submit', requireAuth, upload.fields([
   }
 });
 
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({
+      error: err.code === 'LIMIT_FILE_SIZE'
+        ? `Uploaded file is too large. Maximum per-file size is ${Math.round(maxUploadFileSizeBytes / 1024 / 1024)} MiB.`
+        : err.message,
+      code: err.code,
+      maxFileSizeBytes: maxUploadFileSizeBytes
+    });
+  }
+
+  return next(err);
+});
+
 app.get(/.*/, (_req, res) => {
   res.type('html').send(indexHtml);
 });
 
 if (require.main === module) {
   app.listen(config.port, () => {
-    console.log(`pickle-gallery-admin listening on http://localhost:${config.port}`);
+    console.log(`printdesk-gallery-auth listening on http://localhost:${config.port}`);
   });
 }
 
