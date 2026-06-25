@@ -28,6 +28,19 @@ const maxRequestsPerWindow = 180;
 const requestBuckets = new Map();
 const indexHtml = fs.readFileSync(path.join(config.staticDir, 'index.html'), 'utf8');
 
+function logStartupDiagnostics() {
+  console.log('printdesk-gallery-auth startup diagnostics');
+  console.log(`- PORT: ${config.port}`);
+  console.log(`- GITHUB_CLIENT_ID present: ${Boolean(config.githubClientId)}`);
+  console.log(`- allowed GitHub user: ${config.allowedUser}`);
+  console.log(`- target repository: ${config.targetOwner}/${config.targetRepo}`);
+  console.log(`- target branch: ${config.targetBranch}`);
+  console.log(`- gallery JSON path: ${config.galleryJsonPath}`);
+  console.log(`- gallery asset base path: ${config.assetBasePath}`);
+  console.log(`- gallery attachment base path: ${config.attachmentBasePath}`);
+  console.log(`- session cookie name: ${config.sessionCookie}`);
+}
+
 function rateLimit(req, res, next) {
   const now = Date.now();
   const key = `${req.ip}:${req.path}`;
@@ -257,9 +270,10 @@ app.get(/.*/, (_req, res) => {
 });
 
 if (require.main === module) {
+  logStartupDiagnostics();
   app.listen(config.port, () => {
-    console.log(`pickle-gallery-admin listening on http://localhost:${config.port}`);
+    console.log(`printdesk-gallery-auth listening on http://localhost:${config.port}`);
   });
 }
 
-module.exports = { app };
+module.exports = { app, logStartupDiagnostics };
