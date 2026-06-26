@@ -30,6 +30,24 @@ const maxRequestsPerWindow = 180;
 const requestBuckets = new Map();
 const indexHtml = fs.readFileSync(path.join(config.staticDir, 'index.html'), 'utf8');
 
+function applyCors(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && config.localOwnerAllowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+}
+
 function rateLimit(req, res, next) {
   const now = Date.now();
   const key = `${req.ip}:${req.path}`;
@@ -81,6 +99,22 @@ function isLocalOwnerUnlocked(session) {
   return Boolean(session && session.localOwnerUnlocked && session.localOwnerExpiresAt && session.localOwnerExpiresAt > Date.now());
 }
 
+function buildSessionCookie(sid) {
+  const attributes = [
+    `${config.sessionCookie}=${encodeURIComponent(sid)}`,
+    'Path=/',
+    'HttpOnly',
+    `SameSite=${config.sessionCookieSameSite}`
+  ];
+
+  if (config.sessionCookieSecure) {
+    attributes.push('Secure');
+  }
+
+  return attributes.join('; ');
+}
+
+app.use(applyCors);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(rateLimit);
@@ -98,7 +132,7 @@ function getSession(req, res) {
   if (!sid || !sessions.has(sid)) {
     sid = crypto.randomBytes(24).toString('hex');
     sessions.set(sid, {});
-    res.setHeader('Set-Cookie', `${config.sessionCookie}=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax`);
+    res.setHeader('Set-Cookie', buildSessionCookie(sid));
   }
   return sessions.get(sid);
 }
